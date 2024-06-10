@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="news.css">
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.0/dist/dexie.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/annyang/2.6.1/annyang.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <title>YogaFlex - Novice</title>
+
+    <script>
+        const db = new Dexie('NewsDatabase');
+        db.version(1).stores({
+            news: '++id, title, date, content, image'
+        });
+    
+        async function syncNews() {
+            try {
+                const response = await fetch('http://localhost:3000/news/allnews');
+                const data = await response.json();
+                await db.news.clear();
+                await db.news.bulkPut(data);
+            } catch (error) {
+                console.error('Error syncing news:', error);
+            }
+        }
+    
+        document.addEventListener('DOMContentLoaded', () => {
+            syncNews();
+        });
+    
+        window.addEventListener('online', () => {
+            syncNews();
+        });
+    </script>
+
+<script>
+    function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        navigator.serviceWorker.register('service-worker.js').then(registration => {
+            console.log('Service Worker registered');
+
+            const publicVapidKey = 'Your_Public_Vapid_Key';
+            const subscribeOptions = {
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+            };
+
+            return registration.pushManager.subscribe(subscribeOptions);
+        }).then(subscription => {
+            console.log('Push subscription:', subscription);
+
+            return fetch('http://localhost:3000/subscribe', {
+                method: 'POST',
+                body: JSON.stringify(subscription),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+        }).catch(err => {
+            console.error('Service Worker error', err);
+        });
+    }
+</script>
+</head>
+
+<body>
+    <section id="news-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>Novice</h1>
+            <a href="#" id="filter-link">Filter: Ascending</a>
+        </div>
+        <div id="news-container"></div>
+        <a href='manager.html'>Upravljanje novic</a>
+    </section>
+    <script>
+        document.addEventListener('keydown', function (event) {
+            if (event.ctrlKey && event.key === ',') {
+                document.getElementById('filter-link').click();
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            let ascending = true;
+            const filterLink = document.getElementById('filter-link');
+
+            filterLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                ascending = !ascending;
+                filterLink.textContent = `Filter: ${ascending ? 'Ascending' : 'Descending'}`;
+                fetchAndDisplayNews(ascending);
+            });
+
+            fetchAndDisplayNews(ascending);
+        });
+
+        async function fetchAndDisplayNews(ascending) {
+            try {
+                const response = await fetch('http://localhost:3000/news/allnews');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                const newsContainer = document.getElementById('news-container');
+                newsContainer.innerHTML = '';
+                const sortedData = data.sort((a, b) => {
+                    const dateA = new Date(a.date);
+                    const dateB = new Date(b.date);
+                    return ascending ? dateA - dateB : dateB - dateA;
+                });
+                sortedData.forEach(news => {
+                    const newsDiv = document.createElement('div');
+                    newsDiv.classList.add('news-article');
+
+                    const title = document.createElement('h2');
+                    title.textContent = news.title;
+
+                    const image = document.createElement('img');
+                    image.src = news.image;
+                    image.alt = news.title;
+                    image.classList.add('news-image');
+
+                    const date = document.createElement('p');
+                    const formattedDate = formatDate(news.date);
+                    date.innerHTML = `<strong>Datum:</strong> ${formattedDate}`;
+
+                    const content = document.createElement('p');
+                    content.innerHTML = `<strong>Vsebina:</strong> ${news.content}`;
+
+                    newsDiv.appendChild(title);
+                    newsDiv.appendChild(image);
+                    newsDiv.appendChild(date);
+                    newsDiv.appendChild(content);
+
+                    newsContainer.appendChild(newsDiv);
+                });
+            } catch (error) {
+                console.error('Error fetching news:', error);
+            }
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = String(date.getFullYear()).slice(-2);
+            return `${day}/${month}/${year}`;
+        }
+    </script>
+</body>
+
+</html>
